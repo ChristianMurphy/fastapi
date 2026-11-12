@@ -149,7 +149,7 @@ quint run stream-disconnect/stream.qnt --main=current --step=step_ --backend=typ
 
 `mutation/mutants.json` holds 25 hand-picked mistakes in the streaming code,
 the request wrapper, dependency resolution and sync dependency cleanup. Each
-was run against the full upstream suite (4,812 tests, `tests/property`
+was run against the full upstream suite (4,811 tests, `tests/property`
 excluded). The suite caught 22 of 25. Full output is in
 `mutation/results-0.162.5.txt`.
 
@@ -201,3 +201,26 @@ reference model.
   With the mutation the request fails with `DependencyScopeError`. So that
   mutation is a real gap in upstream's tests, not an equivalent mutant.
 - No disagreement between FastAPI and the model was found.
+
+### Property tests tidied for an eventual proposal (2026-11-12)
+
+On `test/property-based-params`, as of commit 141a68f:
+
+- `tests/property/conftest.py` skips the tests when Hypothesis is missing
+  and registers two profiles: `repeatable` (default: 100 fixed examples, no
+  example database) and `explore` (3,000 random examples, chosen with
+  `HYPOTHESIS_PROFILE=explore`).
+- `ruff check`, `ruff format --check` and `ty check` pass on
+  `tests/property`. Statement coverage of the directory is 100% under the
+  project's coverage settings.
+- Under the project's pytest settings the parameter test takes about 6 s and
+  the graph test about 1.3 s, against the 20 s per-test limit. The full
+  suite passes with them: 4,813 passed.
+- Without Hypothesis installed the directory collects nothing and the rest
+  of the suite is unaffected.
+- With the repeatable profile the graph test still catches 7 of 8
+  dependency mutations, and the parameter test still fails on 0.151.0.
+
+Still needed before anything is offered: a Discussion about Hypothesis as a
+test dependency, and a team member asking for a PR. `pyproject.toml` and
+`uv.lock` are unchanged.
