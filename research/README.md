@@ -168,3 +168,16 @@ the per-endpoint SSE rows are stable.
 
 Both SSE survivors sit in the disconnect teardown path, the same path as the
 two reported SSE problems above.
+
+### Follow-up on the two SSE survivors (2026-11-12)
+
+`stream-disconnect/endless.py` runs an endless SSE stream and disconnects
+the client after 0, 1 or 3 events, 12 cases. On unmodified 0.162.5 the
+request ended in 12 of 12 (two runs), and the generator's cleanup was late
+in 12 of 12. With either SSE mutation applied the result was the same: the
+request still ended in 12 of 12. So in the in-process harness neither
+mutation changes behaviour. That was not checked on a real server with
+socket backpressure.
+
+Reactions added to discussions 16346 and 15725 on 2026-11-12. No comment
+posted on either.
