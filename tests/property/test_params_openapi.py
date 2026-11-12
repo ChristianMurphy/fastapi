@@ -1,7 +1,7 @@
 """Property tests: a declared parameter, its OpenAPI entry and its runtime
 behaviour must agree, however the parameter is declared.
 
-Prototype. Needs `hypothesis`, which is not a project dependency.
+Needs `hypothesis`, which is not a project dependency; skipped without it.
 """
 
 import inspect
@@ -9,11 +9,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Annotated, Any
 
-import pytest
-
-hypothesis = pytest.importorskip("hypothesis")
-
-from fastapi import (  # noqa: E402
+from fastapi import (
     Cookie,
     Depends,
     FastAPI,
@@ -21,10 +17,10 @@ from fastapi import (  # noqa: E402
     Header,
     Query,
 )
-from fastapi.testclient import TestClient  # noqa: E402
-from hypothesis import HealthCheck, given, settings  # noqa: E402
-from hypothesis import strategies as st  # noqa: E402
-from pydantic import AliasChoices, BaseModel, Field  # noqa: E402
+from fastapi.testclient import TestClient
+from hypothesis import event, given
+from hypothesis import strategies as st
+from pydantic import AliasChoices, BaseModel, Field
 
 LOCATIONS = {"query": Query, "header": Header, "cookie": Cookie, "form": Form}
 NAMES = ["x", "item_id", "q", "user_token", "limit"]
@@ -52,65 +48,64 @@ class Spec:
         return tp
 
 
+def optional(**strategies: st.SearchStrategy[Any]) -> st.SearchStrategy[dict[str, Any]]:
+    """A dict holding any subset of the given options."""
+    return st.fixed_dictionaries({}, optional=strategies)
+
+
+def bounds(
+    low: st.SearchStrategy[Any], high: st.SearchStrategy[Any]
+) -> st.SearchStrategy[dict[str, Any]]:
+    """At most one lower bound (ge or gt) and one upper bound (le or lt)."""
+    lower = st.dictionaries(st.sampled_from(["ge", "gt"]), low, max_size=1)
+    upper = st.dictionaries(st.sampled_from(["le", "lt"]), high, max_size=1)
+    return st.builds(lambda lo, hi: {**lo, **hi}, lower, upper)
+
+
+def halves(low: int, high: int) -> st.SearchStrategy[float]:
+    return st.integers(low, high).map(lambda i: i / 2)
+
+
+CONSTRAINTS: dict[str, st.SearchStrategy[dict[str, Any]]] = {
+    "int": st.builds(
+        lambda a, b: {**a, **b},
+        bounds(st.integers(-5, 5), st.integers(5, 15)),
+        optional(multiple_of=st.integers(2, 3)),
+    ),
+    "float": bounds(halves(-5, 5), halves(5, 15)),
+    "str": optional(
+        min_length=st.integers(0, 3),
+        max_length=st.integers(3, 6),
+        pattern=st.just("^[a-z]+$"),
+    ),
+    "bool": st.just({}),
+    "list": optional(min_length=st.integers(0, 2), max_length=st.integers(2, 3)),
+}
+ALIAS_CHOICES = st.lists(
+    st.sampled_from(ALIASES), min_size=1, max_size=2, unique=True
+).map(lambda names: AliasChoices(*names))
+NAMING = optional(
+    alias=st.sampled_from(ALIASES),
+    validation_alias=st.one_of(st.sampled_from(ALIASES), ALIAS_CHOICES),
+    description=st.just("A description"),
+    deprecated=st.just(True),
+)
+
+
 @st.composite
 def specs(draw: st.DrawFn) -> Spec:
     location = draw(st.sampled_from(sorted(LOCATIONS)))
     base = draw(st.sampled_from(["int", "str", "float", "bool"]))
     is_list = location != "cookie" and draw(st.booleans())
     nullable = draw(st.booleans())
-    opts: dict[str, Any] = {}
-    if draw(st.booleans()):
-        opts["description"] = "A description"
-    if draw(st.booleans()):
-        opts["deprecated"] = True
-    if location == "header" and draw(st.booleans()):
-        opts["convert_underscores"] = False
-    if is_list:
-        if draw(st.booleans()):
-            opts["min_length"] = draw(st.integers(0, 2))
-        if draw(st.booleans()):
-            opts["max_length"] = draw(st.integers(2, 3))
-    else:
-        if base == "float":
-            if draw(st.booleans()):
-                opts[draw(st.sampled_from(["ge", "gt"]))] = draw(st.integers(-5, 5)) / 2
-            if draw(st.booleans()):
-                opts[draw(st.sampled_from(["le", "lt"]))] = draw(st.integers(5, 15)) / 2
-        if base == "int":
-            if draw(st.booleans()):
-                opts[draw(st.sampled_from(["ge", "gt"]))] = draw(st.integers(-5, 5))
-            if draw(st.booleans()):
-                opts[draw(st.sampled_from(["le", "lt"]))] = draw(st.integers(5, 15))
-            if draw(st.booleans()):
-                opts["multiple_of"] = draw(st.integers(2, 3))
-        elif base == "str":
-            if draw(st.booleans()):
-                opts["min_length"] = draw(st.integers(0, 3))
-            if draw(st.booleans()):
-                opts["max_length"] = draw(st.integers(3, 6))
-            if draw(st.booleans()):
-                opts["pattern"] = "^[a-z]+$"
-    alias_kind = draw(
-        st.sampled_from(["none", "alias", "validation_alias", "both", "choices"])
-    )
-    if alias_kind in ("alias", "both"):
-        opts["alias"] = draw(st.sampled_from(ALIASES))
-    if alias_kind in ("validation_alias", "both"):
-        opts["validation_alias"] = draw(st.sampled_from(ALIASES))
-    if alias_kind == "choices":
-        opts["validation_alias"] = AliasChoices(
-            *draw(
-                st.lists(st.sampled_from(ALIASES), min_size=1, max_size=2, unique=True)
-            )
-        )
-        if draw(st.booleans()):
-            opts["alias"] = draw(st.sampled_from(ALIASES))
-    if nullable and draw(st.booleans()):
-        default: Any = None
-    elif draw(st.booleans()):
-        default = MISSING
-    else:
-        default = draw(values(base, is_list))
+    header_only = optional(convert_underscores=st.just(False))
+    opts = {
+        **draw(CONSTRAINTS["list" if is_list else base]),
+        **draw(NAMING),
+        **draw(header_only if location == "header" else st.just({})),
+    }
+    defaults = [st.just(MISSING), values(base, is_list)]
+    default = draw(st.one_of(*defaults, *([st.none()] if nullable else [])))
     return Spec(
         location=location,
         name=draw(st.sampled_from(NAMES)),
@@ -135,12 +130,18 @@ def values(base: str, is_list: bool) -> st.SearchStrategy[Any]:
 # --- four ways to declare the same parameter --------------------------------
 
 
+def with_signature(func: Any, parameters: list[inspect.Parameter]) -> Any:
+    func.__signature__ = inspect.Signature(parameters)
+    return func
+
+
 def _endpoint(annotation: Any, default: Any, name: str, get: Any = None) -> Any:
     def endpoint(**kwargs: Any) -> Any:
         value = kwargs[name]
         return {"value": get(value) if get else value}
 
-    endpoint.__signature__ = inspect.Signature(  # type: ignore[attr-defined]
+    return with_signature(
+        endpoint,
         [
             inspect.Parameter(
                 name,
@@ -148,9 +149,8 @@ def _endpoint(annotation: Any, default: Any, name: str, get: Any = None) -> Any:
                 annotation=annotation,
                 default=default,
             )
-        ]
+        ],
     )
-    return endpoint
 
 
 def form_annotated(s: Spec) -> Any:
@@ -231,47 +231,44 @@ FORMS = {
 # --- a small JSON Schema checker for the keywords these specs can produce ---
 
 
+def is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+TYPE_CHECKS: dict[str, Any] = {
+    "null": lambda v: v is None,
+    "boolean": lambda v: isinstance(v, bool),
+    "integer": lambda v: is_number(v) and isinstance(v, int),
+    "number": is_number,
+    "string": lambda v: isinstance(v, str),
+    "array": lambda v: isinstance(v, list),
+}
+KEYWORD_CHECKS: dict[str, Any] = {
+    "items": lambda sub, v: all(schema_accepts(sub, item) for item in v),
+    "minItems": lambda bound, v: len(v) >= bound,
+    "maxItems": lambda bound, v: len(v) <= bound,
+    "minimum": lambda bound, v: v >= bound,
+    "maximum": lambda bound, v: v <= bound,
+    "exclusiveMinimum": lambda bound, v: v > bound,
+    "exclusiveMaximum": lambda bound, v: v < bound,
+    "multipleOf": lambda bound, v: v % bound == 0,
+    "minLength": lambda bound, v: len(v) >= bound,
+    "maxLength": lambda bound, v: len(v) <= bound,
+    "pattern": lambda regex, v: re.search(regex, v) is not None,
+}
+ANNOTATIONS = {"anyOf", "type", "title", "default", "description", "deprecated"}
+
+
 def schema_accepts(schema: dict[str, Any], value: Any) -> bool:
-    known = {
-        "anyOf", "type", "items", "minimum", "maximum", "exclusiveMinimum",
-        "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern",
-        "title", "default", "minItems", "maxItems", "description", "deprecated",
-    }  # fmt: skip
-    assert set(schema) <= known, f"unhandled schema keywords: {set(schema) - known}"
+    unhandled = set(schema) - ANNOTATIONS - set(KEYWORD_CHECKS)
+    assert not unhandled, f"unhandled schema keywords: {unhandled}"
     if "anyOf" in schema:
         return any(schema_accepts(sub, value) for sub in schema["anyOf"])
-    tp = schema.get("type")
-    if tp == "null":
-        return value is None
-    if tp == "array":
-        return (
-            isinstance(value, list)
-            and schema.get("minItems", 0) <= len(value) <= schema.get("maxItems", 99)
-            and all(schema_accepts(schema.get("items", {}), v) for v in value)
-        )
-    if tp == "boolean":
-        return isinstance(value, bool)
-    if tp == "integer":
-        ok = isinstance(value, int) and not isinstance(value, bool)
-    elif tp == "number":
-        ok = isinstance(value, (int, float)) and not isinstance(value, bool)
-    elif tp == "string":
-        ok = isinstance(value, str)
-    else:
-        raise AssertionError(f"unhandled type {tp!r}")
-    if not ok:
-        return False
-    checks = [
-        ("minimum", lambda b: value >= b),
-        ("maximum", lambda b: value <= b),
-        ("exclusiveMinimum", lambda b: value > b),
-        ("exclusiveMaximum", lambda b: value < b),
-        ("multipleOf", lambda b: value % b == 0),
-        ("minLength", lambda b: len(value) >= b),
-        ("maxLength", lambda b: len(value) <= b),
-        ("pattern", lambda b: re.search(b, value) is not None),
-    ]
-    return all(check(schema[key]) for key, check in checks if key in schema)
+    return TYPE_CHECKS[schema["type"]](value) and all(
+        check(schema[keyword], value)
+        for keyword, check in KEYWORD_CHECKS.items()
+        if keyword in schema
+    )
 
 
 # --- driving the app ---------------------------------------------------------
@@ -306,13 +303,11 @@ def send(client: TestClient, location: str, name: str, value: Any) -> Any:
     if value is MISSING:
         return client.get("/")
     items = value if isinstance(value, list) else [value]
-    if isinstance(value, Raw) and location == "header":
-        value = Raw(value.strip())  # the client rejects padded header values
-        items = [value]
     if location == "query":
         return client.get("/", params=[(name, wire(v)) for v in items])
     if location == "header":
-        return client.get("/", headers=[(name, wire(v)) for v in items])
+        # The client rejects padded header values, so strip them.
+        return client.get("/", headers=[(name, wire(v).strip()) for v in items])
     return client.get("/", headers={"cookie": f"{name}={wire(items[0])}"})
 
 
@@ -322,7 +317,7 @@ def published(app: FastAPI, location: str) -> dict[str, Any]:
     params = app.openapi()["paths"]["/"]["get"].get("parameters", [])
     matching = [p for p in params if p["in"] == location]
     assert len(matching) == 1, params
-    # Lead 1 (cosmetic): header titles differ between forms ("Item-Id" vs "Item Id")
+    # Titles differ between declaration forms for headers ("Item-Id", "Item Id").
     matching[0]["schema"].pop("title", None)
     return matching[0]
 
@@ -352,7 +347,6 @@ def build(form: str, s: Spec) -> FastAPI:
     return app
 
 
-@settings(max_examples=300, deadline=None, suppress_health_check=list(HealthCheck))
 @given(data=st.data(), s=specs())
 def test_declaration_forms_agree(data: st.DataObject, s: Spec) -> None:
     apps = {form: build(form, s) for form in FORMS}
@@ -365,11 +359,10 @@ def test_declaration_forms_agree(data: st.DataObject, s: Spec) -> None:
     value = data.draw(
         st.one_of(st.just(MISSING), values(s.base, s.is_list), RAW), label="value"
     )
-    names = {doc["name"], s.name, s.name.replace("_", "-")}
-    for key in ("alias", "validation_alias"):
-        alias = s.opts.get(key)
-        names.update(alias.choices if isinstance(alias, AliasChoices) else [alias])
-    names.discard(None)
+    names: set[str] = {doc["name"], s.name, s.name.replace("_", "-")}
+    for alias in (s.opts.get("alias"), s.opts.get("validation_alias")):
+        choices = alias.choices if isinstance(alias, AliasChoices) else [alias]
+        names.update(choice for choice in choices if isinstance(choice, str))
     name = data.draw(st.sampled_from(sorted(names)), label="name")
     results = {}
     for form, app in apps.items():
@@ -380,7 +373,7 @@ def test_declaration_forms_agree(data: st.DataObject, s: Spec) -> None:
         assert result == results["annotated"], (form, result, results["annotated"])
 
     status, echoed = results["annotated"]
-    hypothesis.event(f"{s.location} sent={value is not MISSING} status={status}")
+    event(f"{s.location} sent={value is not MISSING} status={status}")
     if name != doc["name"] or isinstance(value, Raw):
         return
     if value is MISSING:

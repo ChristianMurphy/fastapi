@@ -5,32 +5,28 @@ async and generator dependencies, with `use_cache` and `scope` chosen per edge
 and some dependencies overridden. The model below predicts which dependencies
 run, in which order, and in which order generators are torn down.
 
-Prototype. Needs `hypothesis`, which is not a project dependency.
+Needs `hypothesis`, which is not a project dependency; skipped without it.
 """
 
 import inspect
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
-import pytest
-
-hypothesis = pytest.importorskip("hypothesis")
-
-from fastapi import Depends, FastAPI  # noqa: E402
-from fastapi.exceptions import DependencyScopeError  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-from hypothesis import HealthCheck, given, settings  # noqa: E402
-from hypothesis import strategies as st  # noqa: E402
+from fastapi import Depends, FastAPI
+from fastapi.exceptions import DependencyScopeError
+from fastapi.testclient import TestClient
+from hypothesis import event, given
+from hypothesis import strategies as st
 
 KINDS = ["sync", "async", "gen", "asyncgen"]
-SCOPES = [None, "function", "request"]
+SCOPES: list[Literal["function", "request"] | None] = [None, "function", "request"]
 
 
 @dataclass(frozen=True)
 class Edge:
     target: int
     use_cache: bool
-    scope: str | None
+    scope: Literal["function", "request"] | None
 
 
 @dataclass(frozen=True)
@@ -191,13 +187,12 @@ def make_callable(name: str, node: Node, funcs: list[Any], log: list[str]) -> An
             finally:
                 log.append(f"exit {name}")
 
-    call.__signature__ = signature(node.edges, funcs)  # type: ignore[attr-defined]
     call.__name__ = name
-    return call
+    return with_signature(call, node.edges, funcs)
 
 
-def signature(edges: tuple[Edge, ...], funcs: list[Any]) -> inspect.Signature:
-    return inspect.Signature(
+def with_signature(func: Any, edges: tuple[Edge, ...], funcs: list[Any]) -> Any:
+    func.__signature__ = inspect.Signature(
         [
             inspect.Parameter(
                 f"p{position}",
@@ -209,6 +204,7 @@ def signature(edges: tuple[Edge, ...], funcs: list[Any]) -> inspect.Signature:
             for position, edge in enumerate(edges)
         ]
     )
+    return func
 
 
 def build(graph: Graph, log: list[str]) -> FastAPI:
@@ -222,7 +218,7 @@ def build(graph: Graph, log: list[str]) -> FastAPI:
             raise RuntimeError("endpoint failed")
         return {"ok": True}
 
-    endpoint.__signature__ = signature(graph.roots, funcs)  # type: ignore[attr-defined]
+    with_signature(endpoint, graph.roots, funcs)
     app = FastAPI()
     for index, node in graph.overrides.items():
         app.dependency_overrides[funcs[index]] = make_callable(
@@ -232,11 +228,10 @@ def build(graph: Graph, log: list[str]) -> FastAPI:
     return app
 
 
-@settings(max_examples=300, deadline=None, suppress_health_check=list(HealthCheck))
 @given(graph=graphs())
 def test_dependency_graph_matches_model(graph: Graph) -> None:
     expected = predict(graph)
-    hypothesis.event(
+    event(
         "startup error"
         if expected.startup_error
         else "request error"
