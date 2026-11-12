@@ -1,7 +1,6 @@
 """A request-scope dependency reaches a function-scope one through a plain
 (non-yield) dependency. The direct form is rejected at startup; this is not."""
 
-import sys
 from typing import Annotated
 
 from fastapi import Depends, FastAPI

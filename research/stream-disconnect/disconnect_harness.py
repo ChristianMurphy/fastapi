@@ -21,7 +21,7 @@ disconnects at once.
 import gc
 import itertools
 import sys
-from typing import Annotated, Any
+from typing import Annotated
 
 import anyio
 import fastapi
