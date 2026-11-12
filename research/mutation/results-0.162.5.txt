@@ -1,0 +1,27 @@
+sse: do not cancel producer tasks on exit                       SURVIVED          4811 passed, 20 skipped, 1 xfailed in 30.55s
+sse: do not close output stream on exit                         KILLED            4 failed, 2923 passed, 19 skipped in 11.82s
+sse: no checkpoint after each event                             SURVIVED          4811 passed, 20 skipped, 1 xfailed in 29.96s
+sse: keepalive comment never sent                               KILLED            1 failed, 2981 passed, 19 skipped in 17.26s
+sse: producer does not close its send stream                    KILLED (timeout)  timed out after 240s
+sse: keepalive task swallows nothing at end of stream           KILLED            4 failed, 2923 passed, 19 skipped in 12.14s
+sse: drop Cache-Control header                                  KILLED            1 failed, 2966 passed, 19 skipped in 11.60s
+sse: drop X-Accel-Buffering header                              KILLED            1 failed, 2977 passed, 19 skipped in 17.01s
+jsonl: no checkpoint after each item                            KILLED            1 failed, 4809 passed, 20 skipped, 1 xfailed in 31.98s
+raw stream: no checkpoint after each chunk                      KILLED            1 failed, 4808 passed, 20 skipped, 1 xfailed in 32.39s
+http: function-scope deps stay open while the response is sent  KILLED            4 failed, 373 passed, 12 skipped in 8.09s
+http: no error when a dependency swallows the exception         KILLED            2 failed, 3664 passed, 20 skipped, 1 xfailed in 23.86s
+deps: function scope uses the request exit stack                KILLED            3 failed, 387 passed, 16 skipped in 5.88s
+deps: use_cache=False ignored                                   KILLED            1 failed, 285 passed, 12 skipped in 5.26s
+deps: results never cached                                      KILLED            2 failed, 265 passed, 12 skipped in 5.66s
+deps: scope rule not checked at startup                         KILLED            2 failed, 403 passed, 15 skipped in 5.39s
+deps: override loses the declared scope                         SURVIVED          4811 passed, 20 skipped, 1 xfailed in 28.54s
+deps: dependency still called after sub-dependency errors       KILLED            4 failed, 291 passed, 12 skipped in 6.53s
+deps: generators get no default scope                           KILLED            1 failed, 317 passed, 12 skipped in 5.46s
+deps: cache key ignores scope                                   KILLED            1 failed, 417 passed, 16 skipped in 6.80s
+sync dep: exit after error not shielded from cancellation       KILLED            4 failed, 149 passed, 9 skipped in 5.46s
+sync dep: normal exit not shielded from cancellation            KILLED            2 failed, 189 passed, 9 skipped in 5.52s
+sync dep: exception always swallowed                            KILLED            4 failed, 148 passed, 9 skipped in 5.34s
+sync dep: exit waits for default thread capacity (error path)   KILLED            2 failed, 539 passed, 16 skipped in 7.16s
+sync dep: exit waits for default thread capacity (normal path)  KILLED            2 failed, 513 passed, 16 skipped in 7.52s
+
+25 mutants, 3 survived

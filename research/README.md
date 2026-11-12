@@ -144,3 +144,27 @@ quint run stream-disconnect/stream.qnt --main=current --step=step_ --backend=typ
   confirmed on a server that reports 2.4.
 - The cancellation tests added in 0.162.5 fail 21 of 39 against 0.162.0.
   They cover synchronous yield dependencies only.
+
+## Mutation score of upstream's tests (0.162.5, 2026-11-12)
+
+`mutation/mutants.json` holds 25 hand-picked mistakes in the streaming code,
+the request wrapper, dependency resolution and sync dependency cleanup. Each
+was run against the full upstream suite (4,812 tests, `tests/property`
+excluded). The suite caught 22 of 25. Full output is in
+`mutation/results-0.162.5.txt`.
+
+The three it missed:
+
+- SSE: the producer tasks are not cancelled when the exit stack unwinds.
+- SSE: no checkpoint after each event.
+- Dependencies: an override loses the scope declared on the original
+  `Depends`.
+
+None of the three has been shown to change behaviour, so each may be an
+equivalent mutant. The disconnect harness here does not tell the two SSE
+ones apart from the baseline either; its streams are finite and short. Its
+total violation count also varies between runs (175 to 179 of 288), while
+the per-endpoint SSE rows are stable.
+
+Both SSE survivors sit in the disconnect teardown path, the same path as the
+two reported SSE problems above.

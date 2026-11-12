@@ -1,0 +1,152 @@
+[
+ {
+  "name": "sse: do not cancel producer tasks on exit",
+  "file": "fastapi/routing.py",
+  "old": "                        yield receive_keepalive\n                        tg.cancel_scope.cancel()\n",
+  "new": "                        yield receive_keepalive\n"
+ },
+ {
+  "name": "sse: do not close output stream on exit",
+  "file": "fastapi/routing.py",
+  "old": "                async_exit_stack.push_async_callback(sse_receive_stream.aclose)\n",
+  "new": ""
+ },
+ {
+  "name": "sse: no checkpoint after each event",
+  "file": "fastapi/routing.py",
+  "old": "                        yield data\n                        # Guarantee a checkpoint so cancellation can be\n                        # delivered even when the producer is faster than\n                        # the consumer and receive() never suspends.\n                        await anyio.sleep(0)\n",
+  "new": "                        yield data\n"
+ },
+ {
+  "name": "sse: keepalive comment never sent",
+  "file": "fastapi/routing.py",
+  "old": "                                        await send_keepalive.send(KEEPALIVE_COMMENT)\n",
+  "new": "                                        pass\n"
+ },
+ {
+  "name": "sse: producer does not close its send stream",
+  "file": "fastapi/routing.py",
+  "old": "                        async with send_stream:\n                            async for raw_item in sse_aiter:\n                                await send_stream.send(_serialize_sse_item(raw_item))\n",
+  "new": "                        if True:\n                            async for raw_item in sse_aiter:\n                                await send_stream.send(_serialize_sse_item(raw_item))\n"
+ },
+ {
+  "name": "sse: keepalive task swallows nothing at end of stream",
+  "file": "fastapi/routing.py",
+  "old": "                            except anyio.EndOfStream:\n                                pass\n",
+  "new": "                            except anyio.EndOfStream:\n                                raise\n"
+ },
+ {
+  "name": "sse: drop Cache-Control header",
+  "file": "fastapi/routing.py",
+  "old": "                response.headers[\"Cache-Control\"] = \"no-cache\"\n",
+  "new": ""
+ },
+ {
+  "name": "sse: drop X-Accel-Buffering header",
+  "file": "fastapi/routing.py",
+  "old": "                response.headers[\"X-Accel-Buffering\"] = \"no\"\n",
+  "new": ""
+ },
+ {
+  "name": "jsonl: no checkpoint after each item",
+  "file": "fastapi/routing.py",
+  "old": "                            yield _serialize_item(item)\n                            # To allow for cancellation to trigger\n                            # Ref: https://github.com/fastapi/fastapi/issues/14680\n                            await anyio.sleep(0)\n",
+  "new": "                            yield _serialize_item(item)\n"
+ },
+ {
+  "name": "raw stream: no checkpoint after each chunk",
+  "file": "fastapi/routing.py",
+  "old": "                            yield chunk\n                            # To allow for cancellation to trigger\n                            # Ref: https://github.com/fastapi/fastapi/issues/14680\n                            await anyio.sleep(0)\n",
+  "new": "                            yield chunk\n"
+ },
+ {
+  "name": "http: function-scope deps stay open while the response is sent",
+  "file": "fastapi/routing.py",
+  "old": "                    response = await f(request)\n                await response(scope, receive, send)\n                # Continues customization\n                response_awaited = True\n",
+  "new": "                    response = await f(request)\n                    await response(scope, receive, send)\n                # Continues customization\n                response_awaited = True\n"
+ },
+ {
+  "name": "http: no error when a dependency swallows the exception",
+  "file": "fastapi/routing.py",
+  "old": "            if not response_awaited:\n                raise FastAPIError(",
+  "new": "            if False:\n                raise FastAPIError("
+ },
+ {
+  "name": "deps: function scope uses the request exit stack",
+  "file": "fastapi/dependencies/utils.py",
+  "old": "            if sub_dependant.scope == \"function\":\n                use_astack = function_astack\n",
+  "new": ""
+ },
+ {
+  "name": "deps: use_cache=False ignored",
+  "file": "fastapi/dependencies/utils.py",
+  "old": "        if sub_dependant.use_cache and sub_dependant_cache_key in dependency_cache:",
+  "new": "        if sub_dependant_cache_key in dependency_cache:"
+ },
+ {
+  "name": "deps: results never cached",
+  "file": "fastapi/dependencies/utils.py",
+  "old": "        if sub_dependant_cache_key not in dependency_cache:\n            dependency_cache[sub_dependant_cache_key] = solved\n",
+  "new": ""
+ },
+ {
+  "name": "deps: scope rule not checked at startup",
+  "file": "fastapi/dependencies/utils.py",
+  "old": "                and _get_computed_scope(dependant=dependant) == \"request\"\n                and param_details.depends.scope == \"function\"\n            ):",
+  "new": "                and _get_computed_scope(dependant=dependant) == \"request\"\n                and param_details.depends.scope == \"function\"\n                and False\n            ):"
+ },
+ {
+  "name": "deps: override loses the declared scope",
+  "file": "fastapi/dependencies/utils.py",
+  "old": "                parent_oauth_scopes=_get_oauth_scopes(dependant=sub_dependant),\n                scope=sub_dependant.scope,\n",
+  "new": "                parent_oauth_scopes=_get_oauth_scopes(dependant=sub_dependant),\n"
+ },
+ {
+  "name": "deps: dependency still called after sub-dependency errors",
+  "file": "fastapi/dependencies/utils.py",
+  "old": "        if solved_result.errors:\n            errors.extend(solved_result.errors)\n            continue\n",
+  "new": "        if solved_result.errors:\n            errors.extend(solved_result.errors)\n"
+ },
+ {
+  "name": "deps: generators get no default scope",
+  "file": "fastapi/dependencies/models.py",
+  "old": "    if _is_gen_callable(dependant.call) or _is_async_gen_callable(dependant.call):\n        return \"request\"\n    return None",
+  "new": "    return None"
+ },
+ {
+  "name": "deps: cache key ignores scope",
+  "file": "fastapi/dependencies/models.py",
+  "old": "        _get_computed_scope(dependant=dependant) or \"\",\n",
+  "new": "        \"\",\n"
+ },
+ {
+  "name": "sync dep: exit after error not shielded from cancellation",
+  "file": "fastapi/concurrency.py",
+  "old": "    except BaseException as e:\n        with CancelScope(shield=True):\n",
+  "new": "    except BaseException as e:\n        if True:\n"
+ },
+ {
+  "name": "sync dep: normal exit not shielded from cancellation",
+  "file": "fastapi/concurrency.py",
+  "old": "    else:\n        with CancelScope(shield=True):\n",
+  "new": "    else:\n        if True:\n"
+ },
+ {
+  "name": "sync dep: exception always swallowed",
+  "file": "fastapi/concurrency.py",
+  "old": "        if not ok:\n            raise\n",
+  "new": "        if False:\n            raise\n"
+ },
+ {
+  "name": "sync dep: exit waits for default thread capacity (error path)",
+  "file": "fastapi/concurrency.py",
+  "old": "                    cm.__exit__, type(e), e, e.__traceback__, limiter=exit_limiter\n",
+  "new": "                    cm.__exit__, type(e), e, e.__traceback__\n"
+ },
+ {
+  "name": "sync dep: exit waits for default thread capacity (normal path)",
+  "file": "fastapi/concurrency.py",
+  "old": "                cm.__exit__, None, None, None, limiter=exit_limiter\n",
+  "new": "                cm.__exit__, None, None, None\n"
+ }
+]
