@@ -181,3 +181,23 @@ socket backpressure.
 
 Reactions added to discussions 16346 and 15725 on 2026-11-12. No comment
 posted on either.
+
+### Dependency graph test with overrides and scopes (2026-11-12)
+
+`tests/property/test_dependency_graph.py` on the
+`test/property-based-params` branch replaces the spike here. It adds
+per-edge `scope`, dependency overrides and the startup scope rule to the
+reference model.
+
+- Passes on 0.162.0 and 0.162.5: 300 graphs in about 3 s. About 40% of
+  cases run with overrides, 10% expect a startup error and 1% a request
+  error.
+- Of the 8 dependency mutations, it catches 7. The one it misses needs a
+  validation error inside a sub-dependency, which the test does not
+  generate; upstream's suite catches that one.
+- It catches "an override loses the declared scope", which upstream's suite
+  missed. Smallest case: a dependency declared with `scope="function"` is
+  overridden by a generator that has its own function-scope sub-dependency.
+  With the mutation the request fails with `DependencyScopeError`. So that
+  mutation is a real gap in upstream's tests, not an equivalent mutant.
+- No disagreement between FastAPI and the model was found.
