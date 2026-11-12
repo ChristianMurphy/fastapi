@@ -1,4 +1,5 @@
 """Feasibility spike: generated dependency graphs checked against a tiny model."""
+
 import inspect
 from typing import Any
 
@@ -18,14 +19,16 @@ def graphs(draw):
         kind = draw(st.sampled_from(KINDS))
         # edges only to earlier nodes: a DAG by construction
         edges = draw(
-            st.lists(
-                st.tuples(st.integers(0, i - 1), st.booleans()), max_size=3
-            )
+            st.lists(st.tuples(st.integers(0, i - 1), st.booleans()), max_size=3)
             if i
             else st.just([])
         )
         nodes.append((kind, edges))
-    roots = draw(st.lists(st.tuples(st.integers(0, n - 1), st.booleans()), min_size=1, max_size=3))
+    roots = draw(
+        st.lists(
+            st.tuples(st.integers(0, n - 1), st.booleans()), min_size=1, max_size=3
+        )
+    )
     fail = draw(st.booleans())
     return nodes, roots, fail
 
@@ -45,12 +48,17 @@ def build(nodes, roots, fail, log):
 
     for i, (kind, edges) in enumerate(nodes):
         if kind == "sync":
+
             def f(_i=i, **kw):
-                log.append(("call", _i)); return _i
+                log.append(("call", _i))
+                return _i
         elif kind == "async":
+
             async def f(_i=i, **kw):
-                log.append(("call", _i)); return _i
+                log.append(("call", _i))
+                return _i
         elif kind == "gen":
+
             def f(_i=i, **kw):
                 log.append(("call", _i))
                 try:
@@ -58,12 +66,14 @@ def build(nodes, roots, fail, log):
                 finally:
                     log.append(("exit", _i))
         else:
+
             async def f(_i=i, **kw):
                 log.append(("call", _i))
                 try:
                     yield _i
                 finally:
                     log.append(("exit", _i))
+
         f.__signature__ = inspect.Signature(params(edges))
         f.__name__ = f"dep{i}"
         funcs.append(f)

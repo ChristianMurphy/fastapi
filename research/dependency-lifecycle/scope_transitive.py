@@ -1,5 +1,6 @@
 """A request-scope dependency reaches a function-scope one through a plain
 (non-yield) dependency. The direct form is rejected at startup; this is not."""
+
 import sys
 from typing import Annotated
 
@@ -32,8 +33,10 @@ def unit_of_work(r: Annotated[Session, Depends(repo)]):  # default scope: reques
 def build(direct: bool) -> FastAPI:
     app = FastAPI()
     if direct:
+
         def uow_direct(s: Annotated[Session, Depends(session, scope="function")]):
             yield s
+
         dep = uow_direct
     else:
         dep = unit_of_work
@@ -53,4 +56,6 @@ for direct in (True, False):
         r = TestClient(app).get("/")
         print(f"direct={direct}: status {r.status_code}, log={log}")
     except Exception as e:
-        print(f"direct={direct}: rejected at startup: {type(e).__name__}: {str(e)[:110]}")
+        print(
+            f"direct={direct}: rejected at startup: {type(e).__name__}: {str(e)[:110]}"
+        )
